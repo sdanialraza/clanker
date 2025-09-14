@@ -1,0 +1,24 @@
+[package]
+name = "clanker"
+version = "0.1.0"
+edition = "2024"
+license-file = "LICENSE"
+repository = "https://github.com/sdanialraza/clanker"
+rust-version = "1.89.0"
+
+[dependencies]
+dotenv = "0.15"
+openai_api_rust = "0.1.9"
+serenity = "0.12.4"
+tokio = { features = ["macros", "rt-multi-thread"], version = "1.47.1" }
+
+[profile.dev]
+incremental = true
+opt-level = 1
+strip = "debuginfo"
+
+[profile.release]
+incremental = true
+lto = true
+opt-level = 3
+strip = "debuginfo"
