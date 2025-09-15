@@ -40,11 +40,11 @@ impl EventHandler for Handler {
 		let lower = message.content.to_lowercase();
 		let mut split = lower.split_whitespace();
 
-		if !split.next().is_some_and(|x| firsts.contains(&x)) {
+		if split.next().is_none_or(|x| !firsts.contains(&x)) {
 			return;
 		}
 
-		if !split.next().is_some_and(|x| seconds.contains(&x)) {
+		if split.next().is_none_or(|x| !seconds.contains(&x)) {
 			return;
 		}
 
