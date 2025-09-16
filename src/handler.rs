@@ -14,17 +14,16 @@ impl EventHandler for Handler {
 			return;
 		};
 
-		let mut response = CreateInteractionResponse::Acknowledge;
-
 		if component.user.id.to_string() == component.data.custom_id {
 			component.message.delete(&ctx).await.unwrap();
-		} else {
-			let message = CreateInteractionResponseMessage::new()
-				.content("Clanker did not reply to you!")
-				.ephemeral(true);
-
-			response = CreateInteractionResponse::Message(message);
+			return;
 		}
+
+		let message = CreateInteractionResponseMessage::new()
+			.content("Clanker did not reply to you!")
+			.ephemeral(true);
+
+		let response = CreateInteractionResponse::Message(message);
 
 		component.create_response(&ctx, response).await.unwrap();
 	}
@@ -34,11 +33,11 @@ impl EventHandler for Handler {
 			return;
 		}
 
-		let firsts = ["hello", "hey", "hi", "oi", "ok", "sup"];
-		let seconds = ["bot", "clanka", "clanker", "google", "gpt", "siri"];
+		let firsts = ["btw", "hello", "hey", "hi", "oi", "ok", "okay", "so", "sup"];
+		let seconds = ["bot", "bro", "clanka", "clanker", "google", "gpt", "siri"];
 
 		let lower = message.content.to_lowercase();
-		let mut split = lower.split_whitespace();
+		let mut split = lower.split([' ', ',']).filter(|word| !word.is_empty());
 
 		if split.next().is_none_or(|x| !firsts.contains(&x)) {
 			return;
@@ -52,8 +51,9 @@ impl EventHandler for Handler {
 		let history = data.get::<History>().unwrap();
 
 		let mut body = history.entry(message.author.id).or_insert(openai::body());
+		let reply = message.referenced_message.as_ref().map(|msg| msg.content.as_str());
 
-		openai::post(body.value_mut(), message.content.clone());
+		openai::post(body.value_mut(), message.content.clone(), reply);
 
 		let button = CreateButton::new(message.author.id.to_string())
 			.label("Delete")
