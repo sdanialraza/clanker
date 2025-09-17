@@ -33,8 +33,8 @@ impl EventHandler for Handler {
 			return;
 		}
 
-		let firsts = ["btw", "hello", "hey", "hi", "oi", "ok", "okay", "so", "sup"];
-		let seconds = ["bot", "bro", "clanka", "clanker", "google", "gpt", "siri"];
+		let firsts = ["btw", "hello", "hey", "hi", "oi", "ok", "okay", "so", "sup", "wtf"];
+		let seconds = ["bot", "bro", "clanka", "clanker", "google", "gpt", "grok", "siri"];
 
 		let lower = message.content.to_lowercase();
 		let mut split = lower.split([' ', ',']).filter(|word| !word.is_empty());
