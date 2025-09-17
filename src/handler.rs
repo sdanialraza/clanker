@@ -1,55 +1,72 @@
-use std::env::var;
+use serenity::all::{
+	ButtonStyle, Context, CreateAllowedMentions, CreateButton, CreateInteractionResponse,
+	CreateInteractionResponseMessage, CreateMessage, EventHandler, Interaction, Message, MessageFlags, Ready,
+};
 
-use openai_api_rust::chat::*;
-use openai_api_rust::*;
-use serenity::all::{Context, EventHandler, Message as DiscordMessage, Ready};
+use crate::{History, openai};
 
 pub struct Handler;
 
 #[serenity::async_trait]
 impl EventHandler for Handler {
-	async fn message(&self, ctx: Context, message: DiscordMessage) {
+	async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+		let Some(component) = interaction.as_message_component() else {
+			return;
+		};
+
+		if component.user.id.to_string() == component.data.custom_id {
+			component.message.delete(&ctx).await.unwrap();
+			return;
+		}
+
+		let message = CreateInteractionResponseMessage::new()
+			.content("Clanker did not reply to you!")
+			.ephemeral(true);
+
+		let response = CreateInteractionResponse::Message(message);
+
+		component.create_response(&ctx, response).await.unwrap();
+	}
+
+	async fn message(&self, ctx: Context, message: Message) {
 		if message.author.bot {
 			return;
 		}
 
-		let base_url = var("OPENAI_BASE_URL").unwrap();
+		let firsts = ["btw", "hello", "hey", "hi", "oi", "ok", "okay", "so", "sup", "wtf"];
+		let seconds = ["bot", "clank", "clanka", "clanker", "google", "gpt", "grok", "siri"];
 
-		if message.content.to_lowercase().starts_with("hey clanker")
-			|| message.content.to_lowercase().starts_with("hey clanka")
-		{
-			let auth = Auth::from_env().unwrap();
-			let openai = OpenAI::new(auth, base_url.as_str());
-			let body = ChatBody {
-				model: "gpt-4.1-nano".to_string(),
-				max_tokens: Some(500),
-				temperature: Some(0_f32),
-				top_p: Some(0_f32),
-				n: Some(1),
-				stream: Some(false),
-				stop: None,
-				presence_penalty: None,
-				frequency_penalty: None,
-				logit_bias: None,
-				user: None,
-				messages: vec![
-					Message {
-						content: "You are Clanker, a helpful and friendly AI assistant. Always respond in a concise and clear manner. If you don't know the answer, admit it honestly.".to_string(),
-						role: Role::System,
-					},
-					Message {
-						content: message.content.clone(),
-						role: Role::System,
-					},
-				],
-			};
+		let lower = message.content.to_lowercase();
+		let mut split = lower.split([' ', ',']).filter(|word| !word.is_empty());
 
-			let rs = openai.chat_completion_create(&body);
-			let choice = rs.unwrap().choices;
-			let response = choice[0].message.as_ref().unwrap();
-
-			message.reply(ctx, response.content.clone()).await.unwrap();
+		if split.next().is_none_or(|x| !firsts.contains(&x)) {
+			return;
 		}
+
+		if split.next().is_none_or(|x| !seconds.contains(&x)) {
+			return;
+		}
+
+		let data = ctx.data.read().await;
+		let history = data.get::<History>().unwrap();
+
+		let mut body = history.entry(message.author.id).or_insert(openai::body());
+		let reply = message.referenced_message.as_ref().map(|msg| msg.content.as_str());
+
+		openai::post(body.value_mut(), message.content.clone(), reply);
+
+		let button = CreateButton::new(message.author.id.to_string())
+			.label("Delete")
+			.style(ButtonStyle::Danger);
+
+		let builder = CreateMessage::new()
+			.allowed_mentions(CreateAllowedMentions::new())
+			.button(button)
+			.content(body.messages.last().unwrap().content.clone())
+			.flags(MessageFlags::SUPPRESS_EMBEDS)
+			.reference_message(&message);
+
+		message.channel_id.send_message(&ctx, builder).await.unwrap();
 	}
 
 	async fn ready(&self, _: Context, ready: Ready) {
