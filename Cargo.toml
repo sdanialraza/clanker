@@ -2,9 +2,7 @@
 name = "clanker"
 version = "0.1.0"
 edition = "2024"
-license-file = "LICENSE"
-repository = "https://github.com/sdanialraza/clanker"
-rust-version = "1.89.0"
+default-run = "clanker"
 
 [dependencies]
 dashmap = "6.1.0"
