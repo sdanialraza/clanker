@@ -29,7 +29,7 @@ impl Handler {
 
 				history.clear();
 
-				let message = CreateInteractionResponseMessage::new().content("Cleared all message histories!");
+				let message = CreateInteractionResponseMessage::new().content("Cleared all chat histories!");
 				let response = CreateInteractionResponse::Message(message);
 
 				command.create_response(&ctx, response).await.unwrap();
@@ -42,7 +42,7 @@ impl Handler {
 
 			history.remove(&command.user.id);
 
-			let message = CreateInteractionResponseMessage::new().content("Cleared your message history!");
+			let message = CreateInteractionResponseMessage::new().content("Cleared your chat history!");
 			let response = CreateInteractionResponse::Message(message);
 
 			command.create_response(&ctx, response).await.unwrap();
@@ -76,7 +76,7 @@ impl EventHandler for Handler {
 	}
 
 	async fn message(&self, ctx: Context, message: Message) {
-		if message.author.id == ctx.cache.current_user().id {
+		if message.author.bot && message.webhook_id.is_none() {
 			return;
 		}
 
