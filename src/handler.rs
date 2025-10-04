@@ -1,19 +1,55 @@
 use serenity::all::{
-	ButtonStyle, Context, CreateAllowedMentions, CreateButton, CreateInteractionResponse,
-	CreateInteractionResponseMessage, CreateMessage, EventHandler, Interaction, Message, MessageFlags, Ready,
+	ButtonStyle, CommandInteraction, ComponentInteraction, Context, CreateAllowedMentions, CreateButton,
+	CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EventHandler, Interaction, Message,
+	MessageFlags, Ready,
 };
 
 use crate::{History, openai};
 
 pub struct Handler;
 
-#[serenity::async_trait]
-impl EventHandler for Handler {
-	async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-		let Some(component) = interaction.as_message_component() else {
-			return;
-		};
+impl Handler {
+	async fn command_create(&self, ctx: Context, command: CommandInteraction) {
+		let subcommand = command.data.options.first().unwrap().name.as_str();
 
+		if subcommand == "all" {
+			let application = ctx.http.get_current_application_info().await.unwrap();
+
+			if command.user.id != application.owner.unwrap().id {
+				let message = CreateInteractionResponseMessage::new()
+					.content("You are not the application owner!")
+					.ephemeral(true);
+
+				let response = CreateInteractionResponse::Message(message);
+
+				command.create_response(&ctx, response).await.unwrap();
+			} else {
+				let data = ctx.data.read().await;
+				let history = data.get::<History>().unwrap();
+
+				history.clear();
+
+				let message = CreateInteractionResponseMessage::new().content("Cleared all chat histories!");
+				let response = CreateInteractionResponse::Message(message);
+
+				command.create_response(&ctx, response).await.unwrap();
+			}
+		}
+
+		if subcommand == "history" {
+			let data = ctx.data.read().await;
+			let history = data.get::<History>().unwrap();
+
+			history.remove(&command.user.id);
+
+			let message = CreateInteractionResponseMessage::new().content("Cleared your chat history!");
+			let response = CreateInteractionResponse::Message(message);
+
+			command.create_response(&ctx, response).await.unwrap();
+		}
+	}
+
+	async fn component_create(&self, ctx: Context, component: ComponentInteraction) {
 		if component.user.id.to_string() == component.data.custom_id {
 			component.message.delete(&ctx).await.unwrap();
 			return;
@@ -27,9 +63,20 @@ impl EventHandler for Handler {
 
 		component.create_response(&ctx, response).await.unwrap();
 	}
+}
+
+#[serenity::async_trait]
+impl EventHandler for Handler {
+	async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+		match interaction {
+			Interaction::Command(command) => self.command_create(ctx, command).await,
+			Interaction::Component(component) => self.component_create(ctx, component).await,
+			_ => (),
+		}
+	}
 
 	async fn message(&self, ctx: Context, message: Message) {
-		if message.author.bot {
+		if message.author.bot && message.webhook_id.is_none() {
 			return;
 		}
 
