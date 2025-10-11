@@ -12,7 +12,7 @@ pub fn body() -> ChatBody {
 	ChatBody {
 		frequency_penalty: None,
 		logit_bias: None,
-		max_tokens: Some(500),
+		max_tokens: Some(200),
 		messages: vec![message],
 		model: "gpt-5-chat-latest".into(),
 		n: None,
