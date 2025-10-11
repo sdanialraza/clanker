@@ -14,7 +14,7 @@ pub fn body() -> ChatBody {
 		logit_bias: None,
 		max_tokens: Some(500),
 		messages: vec![message],
-		model: "gpt-4.1-nano".into(),
+		model: "gpt-5-chat-latest".into(),
 		n: None,
 		presence_penalty: None,
 		stop: None,

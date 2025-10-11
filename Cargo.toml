@@ -10,4 +10,3 @@ dotenvy = "0.15.7"
 openai_api_rust = "0.1.9"
 serenity = "0.12.4"
 tokio = { features = ["macros", "rt-multi-thread"], version = "1.47.1" }
-
