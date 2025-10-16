@@ -61,9 +61,9 @@ impl Handler {
 
 	async fn message_create(&self, ctx: &Context, message: &Message) -> Result<()> {
 		let mut body = self.history.entry(message.author.id).or_insert(openai::body()?);
-		let reply = message.referenced_message.as_ref().map(|msg| msg.content.as_str());
 
-		openai::post(body.value_mut(), message.content.clone(), reply)?;
+		let reply = message.referenced_message.as_ref().map(|msg| msg.content.as_str());
+		let content = openai::post(body.value_mut(), message.content.clone(), reply)?;
 
 		let button = CreateButton::new(message.author.id.to_string())
 			.label("Delete")
@@ -72,7 +72,7 @@ impl Handler {
 		let builder = CreateMessage::new()
 			.allowed_mentions(CreateAllowedMentions::new())
 			.button(button)
-			.content(body.messages.last().unwrap().content.clone())
+			.content(content)
 			.flags(MessageFlags::SUPPRESS_EMBEDS)
 			.reference_message(message);
 
@@ -115,18 +115,20 @@ impl EventHandler for Handler {
 			return;
 		}
 
-		let firsts = ["btw", "hello", "hey", "hi", "oi", "ok", "okay", "so", "sup", "wtf"];
-		let seconds = ["bot", "clank", "clanka", "clanker", "google", "gpt", "grok", "siri"];
+		if !message.mentions_user_id(ctx.cache.current_user().id) {
+			let firsts = ["btw", "hello", "hey", "hi", "oi", "ok", "okay", "so", "sup", "wtf"];
+			let seconds = ["bot", "clank", "clanka", "clanker", "google", "gpt", "grok", "siri"];
 
-		let lower = message.content.to_lowercase();
-		let mut words = lower.split([' ', ',']).filter(|word| !word.is_empty());
+			let lower = message.content.to_lowercase();
+			let mut words = lower.split([' ', ',']).filter(|word| !word.is_empty());
 
-		if words.next().is_none_or(|word| !firsts.contains(&word)) {
-			return;
-		}
+			if words.next().is_none_or(|word| !firsts.contains(&word)) {
+				return;
+			}
 
-		if words.next().is_none_or(|word| !seconds.contains(&word)) {
-			return;
+			if words.next().is_none_or(|word| !seconds.contains(&word)) {
+				return;
+			}
 		}
 
 		if let Err(error) = self.message_create(&ctx, &message).await {

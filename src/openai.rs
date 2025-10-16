@@ -28,7 +28,7 @@ pub fn body() -> Result<ChatBody> {
 	Ok(body)
 }
 
-pub fn post(body: &mut ChatBody, content: String, reply: Option<&str>) -> Result<()> {
+pub fn post(body: &mut ChatBody, content: String, reply: Option<&str>) -> Result<String> {
 	let api_url = env::var("OPENAI_API_URL")?;
 	let auth = Auth::from_env().map_err(Error::msg)?;
 	let openai = OpenAI::new(auth, &api_url);
@@ -50,9 +50,9 @@ pub fn post(body: &mut ChatBody, content: String, reply: Option<&str>) -> Result
 	let response = message.ok_or_else(|| Error::msg("No choice contained a message"))?;
 
 	body.messages.push(Message {
-		content: response.content,
+		content: response.content.clone(),
 		role: Role::Assistant,
 	});
 
-	Ok(())
+	Ok(response.content)
 }
