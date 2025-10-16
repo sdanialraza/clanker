@@ -15,7 +15,7 @@ pub fn body() -> Result<ChatBody> {
 		logit_bias: None,
 		max_tokens: Some(200),
 		messages: vec![message],
-		model: "gpt-4.1-nano".into(),
+		model: env::var("OPENAI_MODEL")?,
 		n: None,
 		presence_penalty: None,
 		stop: None,
@@ -45,7 +45,10 @@ pub fn post(body: &mut ChatBody, content: String, reply: Option<&str>) -> Result
 		role: Role::User,
 	});
 
-	let completion = openai.chat_completion_create(body).map_err(Error::msg)?;
+	let completion = openai
+		.chat_completion_create(body)
+		.map_err(|_| Error::msg("The API request failed, try again later"))?;
+
 	let message = completion.choices.into_iter().flat_map(|choice| choice.message).next();
 	let response = message.ok_or_else(|| Error::msg("No choice contained a message"))?;
 

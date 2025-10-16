@@ -51,7 +51,7 @@ impl Handler {
 
 	async fn component_create(&self, ctx: &Context, component: &ComponentInteraction) -> Result<()> {
 		if component.user.id.to_string() != component.data.custom_id {
-			anyhow::bail!("Clanker did not reply to you");
+			anyhow::bail!("{} did not reply to you", ctx.cache.current_user().name);
 		}
 
 		component.message.delete(ctx).await?;
@@ -60,6 +60,8 @@ impl Handler {
 	}
 
 	async fn message_create(&self, ctx: &Context, message: &Message) -> Result<()> {
+		message.channel_id.broadcast_typing(ctx).await?;
+
 		let mut body = self.history.entry(message.author.id).or_insert(openai::body()?);
 
 		let reply = message.referenced_message.as_ref().map(|msg| msg.content.as_str());
