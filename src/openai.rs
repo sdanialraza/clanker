@@ -26,9 +26,9 @@ pub fn body() -> ChatBody {
 }
 
 pub fn post(body: &mut ChatBody, content: String, reply: Option<&str>) {
+	let api_url = env::var("OPENAI_API_URL").unwrap();
 	let auth = Auth::from_env().unwrap();
-	let base_url = env::var("OPENAI_BASE_URL").unwrap();
-	let openai = OpenAI::new(auth, &base_url);
+	let openai = OpenAI::new(auth, &api_url);
 
 	if let Some(value) = reply {
 		body.messages.push(Message {

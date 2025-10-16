@@ -1,12 +1,17 @@
+use dashmap::DashMap;
+use openai_api_rust::chat::ChatBody;
 use serenity::all::{
 	ButtonStyle, CommandInteraction, ComponentInteraction, Context, CreateAllowedMentions, CreateButton,
 	CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EventHandler, Interaction, Message,
-	MessageFlags, Ready,
+	MessageFlags, Ready, UserId,
 };
 
-use crate::{History, openai};
+use crate::openai;
 
-pub struct Handler;
+#[derive(Default)]
+pub struct Handler {
+	pub history: DashMap<UserId, ChatBody>,
+}
 
 impl Handler {
 	async fn command_create(&self, ctx: Context, command: CommandInteraction) {
@@ -24,10 +29,7 @@ impl Handler {
 
 				command.create_response(&ctx, response).await.unwrap();
 			} else {
-				let data = ctx.data.read().await;
-				let history = data.get::<History>().unwrap();
-
-				history.clear();
+				self.history.clear();
 
 				let message = CreateInteractionResponseMessage::new().content("Cleared all chat histories!");
 				let response = CreateInteractionResponse::Message(message);
@@ -37,10 +39,7 @@ impl Handler {
 		}
 
 		if subcommand == "history" {
-			let data = ctx.data.read().await;
-			let history = data.get::<History>().unwrap();
-
-			history.remove(&command.user.id);
+			self.history.remove(&command.user.id);
 
 			let message = CreateInteractionResponseMessage::new().content("Cleared your chat history!");
 			let response = CreateInteractionResponse::Message(message);
@@ -84,20 +83,17 @@ impl EventHandler for Handler {
 		let seconds = ["bot", "clank", "clanka", "clanker", "google", "gpt", "grok", "siri"];
 
 		let lower = message.content.to_lowercase();
-		let mut split = lower.split([' ', ',']).filter(|word| !word.is_empty());
+		let mut words = lower.split([' ', ',']).filter(|word| !word.is_empty());
 
-		if split.next().is_none_or(|x| !firsts.contains(&x)) {
+		if words.next().is_none_or(|word| !firsts.contains(&word)) {
 			return;
 		}
 
-		if split.next().is_none_or(|x| !seconds.contains(&x)) {
+		if words.next().is_none_or(|word| !seconds.contains(&word)) {
 			return;
 		}
 
-		let data = ctx.data.read().await;
-		let history = data.get::<History>().unwrap();
-
-		let mut body = history.entry(message.author.id).or_insert(openai::body());
+		let mut body = self.history.entry(message.author.id).or_insert(openai::body());
 		let reply = message.referenced_message.as_ref().map(|msg| msg.content.as_str());
 
 		openai::post(body.value_mut(), message.content.clone(), reply);
