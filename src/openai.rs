@@ -1,15 +1,16 @@
 use std::{env, fs};
 
+use anyhow::{Error, Result};
 use openai_api_rust::chat::{ChatApi, ChatBody};
 use openai_api_rust::{Auth, Message, OpenAI, Role};
 
-pub fn body() -> ChatBody {
+pub fn body() -> Result<ChatBody> {
 	let message = Message {
-		content: fs::read_to_string("assets/prompt.txt").unwrap(),
+		content: fs::read_to_string("assets/prompt.txt")?,
 		role: Role::System,
 	};
 
-	ChatBody {
+	let body = ChatBody {
 		frequency_penalty: None,
 		logit_bias: None,
 		max_tokens: Some(200),
@@ -22,12 +23,14 @@ pub fn body() -> ChatBody {
 		temperature: None,
 		top_p: None,
 		user: None,
-	}
+	};
+
+	Ok(body)
 }
 
-pub fn post(body: &mut ChatBody, content: String, reply: Option<&str>) {
-	let api_url = env::var("OPENAI_API_URL").unwrap();
-	let auth = Auth::from_env().unwrap();
+pub fn post(body: &mut ChatBody, content: String, reply: Option<&str>) -> Result<()> {
+	let api_url = env::var("OPENAI_API_URL")?;
+	let auth = Auth::from_env().map_err(Error::msg)?;
 	let openai = OpenAI::new(auth, &api_url);
 
 	if let Some(value) = reply {
@@ -42,12 +45,14 @@ pub fn post(body: &mut ChatBody, content: String, reply: Option<&str>) {
 		role: Role::User,
 	});
 
-	let completion = openai.chat_completion_create(body).unwrap();
-	let choice = completion.choices.into_iter().next().unwrap();
-	let response = choice.message.unwrap();
+	let completion = openai.chat_completion_create(body).map_err(Error::msg)?;
+	let message = completion.choices.into_iter().flat_map(|choice| choice.message).next();
+	let response = message.ok_or_else(|| Error::msg("No choice contained a message"))?;
 
 	body.messages.push(Message {
 		content: response.content,
 		role: Role::Assistant,
 	});
+
+	Ok(())
 }

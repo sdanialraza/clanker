@@ -1,3 +1,4 @@
+use anyhow::{Error, Result};
 use dashmap::DashMap;
 use openai_api_rust::chat::ChatBody;
 use serenity::all::{
@@ -14,63 +15,98 @@ pub struct Handler {
 }
 
 impl Handler {
-	async fn command_create(&self, ctx: Context, command: CommandInteraction) {
-		let subcommand = command.data.options.first().unwrap().name.as_str();
+	async fn command_create(&self, ctx: &Context, command: &CommandInteraction) -> Result<()> {
+		let option = command
+			.data
+			.options
+			.first()
+			.ok_or_else(|| Error::msg("No command options present"))?;
 
-		if subcommand == "all" {
-			let application = ctx.http.get_current_application_info().await.unwrap();
+		if option.name == "all" {
+			let application = ctx.http.get_current_application_info().await?;
 
-			if command.user.id != application.owner.unwrap().id {
-				let message = CreateInteractionResponseMessage::new()
-					.content("You are not the application owner!")
-					.ephemeral(true);
-
-				let response = CreateInteractionResponse::Message(message);
-
-				command.create_response(&ctx, response).await.unwrap();
-			} else {
-				self.history.clear();
-
-				let message = CreateInteractionResponseMessage::new().content("Cleared all chat histories!");
-				let response = CreateInteractionResponse::Message(message);
-
-				command.create_response(&ctx, response).await.unwrap();
+			if application.owner.is_none_or(|owner| command.user.id != owner.id) {
+				anyhow::bail!("You are not the application owner");
 			}
+
+			self.history.clear();
+
+			let message = CreateInteractionResponseMessage::new().content("Cleared all chat histories!");
+			let response = CreateInteractionResponse::Message(message);
+
+			command.create_response(ctx, response).await?;
 		}
 
-		if subcommand == "history" {
+		if option.name == "history" {
 			self.history.remove(&command.user.id);
 
 			let message = CreateInteractionResponseMessage::new().content("Cleared your chat history!");
 			let response = CreateInteractionResponse::Message(message);
 
-			command.create_response(&ctx, response).await.unwrap();
+			command.create_response(ctx, response).await?;
 		}
+
+		Ok(())
 	}
 
-	async fn component_create(&self, ctx: Context, component: ComponentInteraction) {
-		if component.user.id.to_string() == component.data.custom_id {
-			component.message.delete(&ctx).await.unwrap();
-			return;
+	async fn component_create(&self, ctx: &Context, component: &ComponentInteraction) -> Result<()> {
+		if component.user.id.to_string() != component.data.custom_id {
+			anyhow::bail!("Clanker did not reply to you");
 		}
 
-		let message = CreateInteractionResponseMessage::new()
-			.content("Clanker did not reply to you!")
-			.ephemeral(true);
+		component.message.delete(ctx).await?;
 
-		let response = CreateInteractionResponse::Message(message);
+		Ok(())
+	}
 
-		component.create_response(&ctx, response).await.unwrap();
+	async fn message_create(&self, ctx: &Context, message: &Message) -> Result<()> {
+		let mut body = self.history.entry(message.author.id).or_insert(openai::body()?);
+		let reply = message.referenced_message.as_ref().map(|msg| msg.content.as_str());
+
+		openai::post(body.value_mut(), message.content.clone(), reply)?;
+
+		let button = CreateButton::new(message.author.id.to_string())
+			.label("Delete")
+			.style(ButtonStyle::Danger);
+
+		let builder = CreateMessage::new()
+			.allowed_mentions(CreateAllowedMentions::new())
+			.button(button)
+			.content(body.messages.last().unwrap().content.clone())
+			.flags(MessageFlags::SUPPRESS_EMBEDS)
+			.reference_message(message);
+
+		message.channel_id.send_message(ctx, builder).await?;
+
+		Ok(())
 	}
 }
 
 #[serenity::async_trait]
 impl EventHandler for Handler {
 	async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-		match interaction {
-			Interaction::Command(command) => self.command_create(ctx, command).await,
-			Interaction::Component(component) => self.component_create(ctx, component).await,
-			_ => (),
+		let result = match &interaction {
+			Interaction::Command(command) => self.command_create(&ctx, command).await,
+			Interaction::Component(component) => self.component_create(&ctx, component).await,
+			_ => return,
+		};
+
+		if let Err(error) = result {
+			let message = CreateInteractionResponseMessage::new()
+				.content(format!(":no_entry_sign: {error}!"))
+				.ephemeral(true);
+
+			let response = CreateInteractionResponse::Message(message);
+
+			let result = match &interaction {
+				Interaction::Command(command) => command.create_response(&ctx, response).await,
+				Interaction::Component(component) => component.create_response(&ctx, response).await,
+				_ => return,
+			};
+
+			if result.is_err() {
+				eprintln!("An error occurred: {error}");
+			}
 		}
 	}
 
@@ -93,23 +129,22 @@ impl EventHandler for Handler {
 			return;
 		}
 
-		let mut body = self.history.entry(message.author.id).or_insert(openai::body());
-		let reply = message.referenced_message.as_ref().map(|msg| msg.content.as_str());
+		if let Err(error) = self.message_create(&ctx, &message).await {
+			let button = CreateButton::new(message.author.id.to_string())
+				.label("Delete")
+				.style(ButtonStyle::Danger);
 
-		openai::post(body.value_mut(), message.content.clone(), reply);
+			let builder = CreateMessage::new()
+				.allowed_mentions(CreateAllowedMentions::new())
+				.button(button)
+				.content(format!(":no_entry_sign: {error}!"))
+				.flags(MessageFlags::SUPPRESS_EMBEDS)
+				.reference_message(&message);
 
-		let button = CreateButton::new(message.author.id.to_string())
-			.label("Delete")
-			.style(ButtonStyle::Danger);
-
-		let builder = CreateMessage::new()
-			.allowed_mentions(CreateAllowedMentions::new())
-			.button(button)
-			.content(body.messages.last().unwrap().content.clone())
-			.flags(MessageFlags::SUPPRESS_EMBEDS)
-			.reference_message(&message);
-
-		message.channel_id.send_message(&ctx, builder).await.unwrap();
+			if message.channel_id.send_message(&ctx, builder).await.is_err() {
+				eprintln!("An error occurred: {error}");
+			}
+		}
 	}
 
 	async fn ready(&self, _: Context, ready: Ready) {
