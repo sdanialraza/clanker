@@ -11,7 +11,7 @@ use serenity::prelude::TypeMapKey;
 
 use crate::handler::Handler;
 
-pub struct History;
+struct History;
 
 impl TypeMapKey for History {
 	type Value = HashMap<UserId, ChatBody>;

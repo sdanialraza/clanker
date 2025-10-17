@@ -10,7 +10,7 @@ use crate::{History, openai};
 pub struct Handler;
 
 impl Handler {
-	async fn command_create(&self, ctx: &Context, command: &CommandInteraction) -> Result<()> {
+	async fn command_create(ctx: &Context, command: &CommandInteraction) -> Result<()> {
 		let option = command
 			.data
 			.options
@@ -52,7 +52,7 @@ impl Handler {
 		Ok(())
 	}
 
-	async fn component_create(&self, ctx: &Context, component: &ComponentInteraction) -> Result<()> {
+	async fn component_create(ctx: &Context, component: &ComponentInteraction) -> Result<()> {
 		if component.user.id.to_string() != component.data.custom_id {
 			anyhow::bail!("{} did not reply to you", ctx.cache.current_user().name);
 		}
@@ -62,7 +62,7 @@ impl Handler {
 		Ok(())
 	}
 
-	async fn message_create(&self, ctx: &Context, message: &Message) -> Result<()> {
+	async fn message_create(ctx: &Context, message: &Message) -> Result<()> {
 		message.channel_id.broadcast_typing(ctx).await?;
 
 		let mut data = ctx.data.write().await;
@@ -97,8 +97,8 @@ impl Handler {
 impl EventHandler for Handler {
 	async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
 		let result = match &interaction {
-			Interaction::Command(command) => self.command_create(&ctx, command).await,
-			Interaction::Component(component) => self.component_create(&ctx, component).await,
+			Interaction::Command(command) => Self::command_create(&ctx, command).await,
+			Interaction::Component(component) => Self::component_create(&ctx, component).await,
 			_ => return,
 		};
 
@@ -142,7 +142,7 @@ impl EventHandler for Handler {
 			}
 		}
 
-		if let Err(error) = self.message_create(&ctx, &message).await {
+		if let Err(error) = Self::message_create(&ctx, &message).await {
 			let button = CreateButton::new(message.author.id.to_string())
 				.label("Delete")
 				.style(ButtonStyle::Danger);
