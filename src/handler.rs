@@ -1,18 +1,13 @@
 use anyhow::{Error, Result};
-use dashmap::DashMap;
-use openai_api_rust::chat::ChatBody;
 use serenity::all::{
 	ButtonStyle, CommandInteraction, ComponentInteraction, Context, CreateAllowedMentions, CreateButton,
 	CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EventHandler, Interaction, Message,
-	MessageFlags, Ready, UserId,
+	MessageFlags, Ready,
 };
 
-use crate::openai;
+use crate::{History, openai};
 
-#[derive(Default)]
-pub struct Handler {
-	pub history: DashMap<UserId, ChatBody>,
-}
+pub struct Handler;
 
 impl Handler {
 	async fn command_create(&self, ctx: &Context, command: &CommandInteraction) -> Result<()> {
@@ -29,7 +24,11 @@ impl Handler {
 				anyhow::bail!("You are not the application owner");
 			}
 
-			self.history.clear();
+			let mut data = ctx.data.write().await;
+
+			data.get_mut::<History>()
+				.ok_or(Error::msg("Could not get histories"))?
+				.clear();
 
 			let message = CreateInteractionResponseMessage::new().content("Cleared all chat histories!");
 			let response = CreateInteractionResponse::Message(message);
@@ -38,7 +37,11 @@ impl Handler {
 		}
 
 		if option.name == "history" {
-			self.history.remove(&command.user.id);
+			let mut data = ctx.data.write().await;
+
+			data.get_mut::<History>()
+				.ok_or_else(|| Error::msg("Could not get histories"))?
+				.remove(&command.user.id);
 
 			let message = CreateInteractionResponseMessage::new().content("Cleared your chat history!");
 			let response = CreateInteractionResponse::Message(message);
@@ -62,10 +65,16 @@ impl Handler {
 	async fn message_create(&self, ctx: &Context, message: &Message) -> Result<()> {
 		message.channel_id.broadcast_typing(ctx).await?;
 
-		let mut body = self.history.entry(message.author.id).or_insert(openai::body()?);
+		let mut data = ctx.data.write().await;
 
+		let history = data
+			.get_mut::<History>()
+			.ok_or_else(|| Error::msg("Could not get histories"))?;
+
+		let body = history.entry(message.author.id).or_insert(openai::body()?);
 		let reply = message.referenced_message.as_ref().map(|msg| msg.content.as_str());
-		let content = openai::post(body.value_mut(), message.content.clone(), reply)?;
+
+		let content = openai::post(body, message.content.clone(), reply)?;
 
 		let button = CreateButton::new(message.author.id.to_string())
 			.label("Delete")
