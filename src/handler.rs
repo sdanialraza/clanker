@@ -27,7 +27,7 @@ impl Handler {
 			let mut data = ctx.data.write().await;
 
 			data.get_mut::<History>()
-				.ok_or(Error::msg("Could not get histories"))?
+				.ok_or_else(|| Error::msg("Could not get histories"))?
 				.clear();
 
 			let message = CreateInteractionResponseMessage::new().content("Cleared all chat histories!");

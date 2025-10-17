@@ -1,3 +1,3 @@
 # clanker
 
-A friendly AI bot for your Discord server
+A friendly AI bot for your Discord server.
