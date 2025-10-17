@@ -1,20 +1,21 @@
 use std::{env, fs};
 
+use anyhow::{Error, Result};
 use openai_api_rust::chat::{ChatApi, ChatBody};
 use openai_api_rust::{Auth, Message, OpenAI, Role};
 
-pub fn body() -> ChatBody {
+pub fn body() -> Result<ChatBody> {
 	let message = Message {
-		content: fs::read_to_string("assets/prompt.txt").unwrap(),
+		content: fs::read_to_string("assets/prompt.txt")?,
 		role: Role::System,
 	};
 
-	ChatBody {
+	let body = ChatBody {
 		frequency_penalty: None,
 		logit_bias: None,
 		max_tokens: Some(200),
 		messages: vec![message],
-		model: "gpt-4.1-nano".into(),
+		model: env::var("OPENAI_MODEL")?,
 		n: None,
 		presence_penalty: None,
 		stop: None,
@@ -22,13 +23,15 @@ pub fn body() -> ChatBody {
 		temperature: None,
 		top_p: None,
 		user: None,
-	}
+	};
+
+	Ok(body)
 }
 
-pub fn post(body: &mut ChatBody, content: String, reply: Option<&str>) {
-	let auth = Auth::from_env().unwrap();
-	let base_url = env::var("OPENAI_BASE_URL").unwrap();
-	let openai = OpenAI::new(auth, &base_url);
+pub fn post(body: &mut ChatBody, content: String, reply: Option<&str>) -> Result<String> {
+	let api_url = env::var("OPENAI_API_URL")?;
+	let auth = Auth::from_env().map_err(Error::msg)?;
+	let openai = OpenAI::new(auth, &api_url);
 
 	if let Some(value) = reply {
 		body.messages.push(Message {
@@ -42,12 +45,17 @@ pub fn post(body: &mut ChatBody, content: String, reply: Option<&str>) {
 		role: Role::User,
 	});
 
-	let completion = openai.chat_completion_create(body).unwrap();
-	let choice = completion.choices.into_iter().next().unwrap();
-	let response = choice.message.unwrap();
+	let completion = openai
+		.chat_completion_create(body)
+		.map_err(|_| Error::msg("The API request failed, try again later"))?;
+
+	let message = completion.choices.into_iter().flat_map(|choice| choice.message).next();
+	let response = message.ok_or_else(|| Error::msg("No choice contained a message"))?;
 
 	body.messages.push(Message {
-		content: response.content,
+		content: response.content.clone(),
 		role: Role::Assistant,
 	});
+
+	Ok(response.content)
 }

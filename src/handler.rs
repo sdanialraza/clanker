@@ -1,3 +1,4 @@
+use anyhow::{Error, Result};
 use serenity::all::{
 	ButtonStyle, CommandInteraction, ComponentInteraction, Context, CreateAllowedMentions, CreateButton,
 	CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EventHandler, Interaction, Message,
@@ -9,98 +10,71 @@ use crate::{History, openai};
 pub struct Handler;
 
 impl Handler {
-	async fn command_create(&self, ctx: Context, command: CommandInteraction) {
-		let subcommand = command.data.options.first().unwrap().name.as_str();
+	async fn command_create(ctx: &Context, command: &CommandInteraction) -> Result<()> {
+		let option = command
+			.data
+			.options
+			.first()
+			.ok_or_else(|| Error::msg("No command options present"))?;
 
-		if subcommand == "all" {
-			let application = ctx.http.get_current_application_info().await.unwrap();
+		if option.name == "all" {
+			let application = ctx.http.get_current_application_info().await?;
 
-			if command.user.id != application.owner.unwrap().id {
-				let message = CreateInteractionResponseMessage::new()
-					.content("You are not the application owner!")
-					.ephemeral(true);
-
-				let response = CreateInteractionResponse::Message(message);
-
-				command.create_response(&ctx, response).await.unwrap();
-			} else {
-				let data = ctx.data.read().await;
-				let history = data.get::<History>().unwrap();
-
-				history.clear();
-
-				let message = CreateInteractionResponseMessage::new().content("Cleared all chat histories!");
-				let response = CreateInteractionResponse::Message(message);
-
-				command.create_response(&ctx, response).await.unwrap();
+			if application.owner.is_none_or(|owner| command.user.id != owner.id) {
+				anyhow::bail!("You are not the application owner");
 			}
+
+			let mut data = ctx.data.write().await;
+
+			data.get_mut::<History>()
+				.ok_or_else(|| Error::msg("Could not get histories"))?
+				.clear();
+
+			let message = CreateInteractionResponseMessage::new().content("Cleared all chat histories!");
+			let response = CreateInteractionResponse::Message(message);
+
+			command.create_response(ctx, response).await?;
 		}
 
-		if subcommand == "history" {
-			let data = ctx.data.read().await;
-			let history = data.get::<History>().unwrap();
+		if option.name == "history" {
+			let mut data = ctx.data.write().await;
 
-			history.remove(&command.user.id);
+			data.get_mut::<History>()
+				.ok_or_else(|| Error::msg("Could not get histories"))?
+				.remove(&command.user.id);
 
 			let message = CreateInteractionResponseMessage::new().content("Cleared your chat history!");
 			let response = CreateInteractionResponse::Message(message);
 
-			command.create_response(&ctx, response).await.unwrap();
+			command.create_response(ctx, response).await?;
 		}
+
+		Ok(())
 	}
 
-	async fn component_create(&self, ctx: Context, component: ComponentInteraction) {
-		if component.user.id.to_string() == component.data.custom_id {
-			component.message.delete(&ctx).await.unwrap();
-			return;
+	async fn component_create(ctx: &Context, component: &ComponentInteraction) -> Result<()> {
+		if component.user.id.to_string() != component.data.custom_id {
+			anyhow::bail!("{} did not reply to you", ctx.cache.current_user().name);
 		}
 
-		let message = CreateInteractionResponseMessage::new()
-			.content("Clanker did not reply to you!")
-			.ephemeral(true);
+		component.message.delete(ctx).await?;
 
-		let response = CreateInteractionResponse::Message(message);
-
-		component.create_response(&ctx, response).await.unwrap();
-	}
-}
-
-#[serenity::async_trait]
-impl EventHandler for Handler {
-	async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-		match interaction {
-			Interaction::Command(command) => self.command_create(ctx, command).await,
-			Interaction::Component(component) => self.component_create(ctx, component).await,
-			_ => (),
-		}
+		Ok(())
 	}
 
-	async fn message(&self, ctx: Context, message: Message) {
-		if message.author.bot && message.webhook_id.is_none() {
-			return;
-		}
+	async fn message_create(ctx: &Context, message: &Message) -> Result<()> {
+		message.channel_id.broadcast_typing(ctx).await?;
 
-		let firsts = ["btw", "hello", "hey", "hi", "oi", "ok", "okay", "so", "sup", "wtf"];
-		let seconds = ["bot", "clank", "clanka", "clanker", "google", "gpt", "grok", "siri"];
+		let mut data = ctx.data.write().await;
 
-		let lower = message.content.to_lowercase();
-		let mut split = lower.split([' ', ',']).filter(|word| !word.is_empty());
+		let history = data
+			.get_mut::<History>()
+			.ok_or_else(|| Error::msg("Could not get histories"))?;
 
-		if split.next().is_none_or(|x| !firsts.contains(&x)) {
-			return;
-		}
-
-		if split.next().is_none_or(|x| !seconds.contains(&x)) {
-			return;
-		}
-
-		let data = ctx.data.read().await;
-		let history = data.get::<History>().unwrap();
-
-		let mut body = history.entry(message.author.id).or_insert(openai::body());
+		let body = history.entry(message.author.id).or_insert(openai::body()?);
 		let reply = message.referenced_message.as_ref().map(|msg| msg.content.as_str());
 
-		openai::post(body.value_mut(), message.content.clone(), reply);
+		let content = openai::post(body, message.content.clone(), reply)?;
 
 		let button = CreateButton::new(message.author.id.to_string())
 			.label("Delete")
@@ -109,11 +83,81 @@ impl EventHandler for Handler {
 		let builder = CreateMessage::new()
 			.allowed_mentions(CreateAllowedMentions::new())
 			.button(button)
-			.content(body.messages.last().unwrap().content.clone())
+			.content(content)
 			.flags(MessageFlags::SUPPRESS_EMBEDS)
-			.reference_message(&message);
+			.reference_message(message);
 
-		message.channel_id.send_message(&ctx, builder).await.unwrap();
+		message.channel_id.send_message(ctx, builder).await?;
+
+		Ok(())
+	}
+}
+
+#[serenity::async_trait]
+impl EventHandler for Handler {
+	async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+		let result = match &interaction {
+			Interaction::Command(command) => Self::command_create(&ctx, command).await,
+			Interaction::Component(component) => Self::component_create(&ctx, component).await,
+			_ => return,
+		};
+
+		if let Err(error) = result {
+			let message = CreateInteractionResponseMessage::new()
+				.content(format!(":no_entry_sign: {error}!"))
+				.ephemeral(true);
+
+			let response = CreateInteractionResponse::Message(message);
+
+			let result = match &interaction {
+				Interaction::Command(command) => command.create_response(&ctx, response).await,
+				Interaction::Component(component) => component.create_response(&ctx, response).await,
+				_ => return,
+			};
+
+			if result.is_err() {
+				eprintln!("An error occurred: {error}");
+			}
+		}
+	}
+
+	async fn message(&self, ctx: Context, message: Message) {
+		if message.author.bot && message.webhook_id.is_none() {
+			return;
+		}
+
+		if !message.mentions_user_id(ctx.cache.current_user().id) {
+			let firsts = ["btw", "hello", "hey", "hi", "oi", "ok", "okay", "so", "sup", "wtf"];
+			let seconds = ["bot", "clank", "clanka", "clanker", "google", "gpt", "grok", "siri"];
+
+			let lower = message.content.to_lowercase();
+			let mut words = lower.split([' ', ',']).filter(|word| !word.is_empty());
+
+			if words.next().is_none_or(|word| !firsts.contains(&word)) {
+				return;
+			}
+
+			if words.next().is_none_or(|word| !seconds.contains(&word)) {
+				return;
+			}
+		}
+
+		if let Err(error) = Self::message_create(&ctx, &message).await {
+			let button = CreateButton::new(message.author.id.to_string())
+				.label("Delete")
+				.style(ButtonStyle::Danger);
+
+			let builder = CreateMessage::new()
+				.allowed_mentions(CreateAllowedMentions::new())
+				.button(button)
+				.content(format!(":no_entry_sign: {error}!"))
+				.flags(MessageFlags::SUPPRESS_EMBEDS)
+				.reference_message(&message);
+
+			if message.channel_id.send_message(&ctx, builder).await.is_err() {
+				eprintln!("An error occurred: {error}");
+			}
+		}
 	}
 
 	async fn ready(&self, _: Context, ready: Ready) {
