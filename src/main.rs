@@ -27,6 +27,7 @@ async fn main() -> Result<()> {
 	let mut client = Client::builder(token, intents)
 		.activity(ActivityData::listening("your prompts"))
 		.event_handler(Handler)
+		.type_map_insert::<History>(HashMap::new())
 		.await?;
 
 	client.start().await?;
