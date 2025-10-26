@@ -47,6 +47,7 @@ pub fn post(body: &mut ChatBody, content: String, reply: Option<&str>) -> Result
 
 	let completion = openai
 		.chat_completion_create(body)
+		.inspect_err(|error| eprintln!("An error occurred: {error}"))
 		.map_err(|_| Error::msg("The API request failed, try again later"))?;
 
 	let message = completion.choices.into_iter().flat_map(|choice| choice.message).next();
