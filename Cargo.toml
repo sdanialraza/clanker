@@ -7,8 +7,15 @@ default-run = "clanker"
 [dependencies]
 anyhow = "1.0.100"
 dotenvy = "0.15.7"
-openai_api_rust = "0.1.9"
 serenity = "0.12.4"
+
+[dependencies.reqwest]
+version = "0.12.26"
+features = ["json"]
+
+[dependencies.serde]
+version = "1.0.228"
+features = ["derive"]
 
 [dependencies.tokio]
 version = "1.48.0"

@@ -1,62 +1,85 @@
 use std::{env, fs};
 
 use anyhow::{Error, Result};
-use openai_api_rust::chat::{ChatApi, ChatBody};
-use openai_api_rust::{Auth, Message, OpenAI, Role};
+use reqwest::{Client, Url};
+use serenity::all::Message;
 
-pub fn body() -> Result<ChatBody> {
-	let message = Message {
-		content: fs::read_to_string("assets/prompt.txt")?,
-		role: Role::System,
-	};
+use crate::model::{RequestBody, RequestContent, RequestImageUrl, RequestMessage, ResponseBody};
 
-	let body = ChatBody {
-		frequency_penalty: None,
-		logit_bias: None,
-		max_tokens: Some(200),
+pub fn body() -> Result<RequestBody> {
+	let content = fs::read_to_string("assets/prompt.txt")?;
+	let message = RequestMessage::developer(content);
+
+	let body = RequestBody {
 		messages: vec![message],
 		model: env::var("OPENAI_MODEL")?,
-		n: None,
-		presence_penalty: None,
-		stop: None,
-		stream: None,
-		temperature: None,
-		top_p: None,
-		user: None,
 	};
 
 	Ok(body)
 }
 
-pub fn post(body: &mut ChatBody, content: String, reply: Option<&str>) -> Result<String> {
-	let api_url = env::var("OPENAI_API_URL")?;
-	let auth = Auth::from_env().map_err(Error::msg)?;
-	let openai = OpenAI::new(auth, &api_url);
+pub fn parse(message: &Message) -> RequestMessage {
+	let mut images = Vec::new();
 
-	if let Some(value) = reply {
-		body.messages.push(Message {
-			content: format!("The next message will be a reply to this: {value}"),
-			role: Role::System,
-		});
+	for attachment in message.attachments.iter() {
+		if attachment.dimensions().is_some() {
+			images.push(attachment.url.clone());
+		}
 	}
 
-	body.messages.push(Message {
-		content,
-		role: Role::User,
-	});
+	for embed in message.embeds.iter() {
+		if let Some(image) = embed.image.as_ref() {
+			images.push(image.url.clone());
+		}
 
-	let completion = openai
-		.chat_completion_create(body)
-		.inspect_err(|error| eprintln!("An error occurred: {error}"))
-		.map_err(|_| Error::msg("The API request failed, try again later"))?;
+		if let Some(thumbnail) = embed.thumbnail.as_ref() {
+			images.push(thumbnail.url.clone());
+		}
+	}
 
-	let message = completion.choices.into_iter().flat_map(|choice| choice.message).next();
-	let response = message.ok_or_else(|| Error::msg("No choice contained a message"))?;
+	let mut content = Vec::new();
 
-	body.messages.push(Message {
-		content: response.content.clone(),
-		role: Role::Assistant,
-	});
+	if !message.content.is_empty() {
+		content.push(RequestContent::text(message.content.clone()));
+	}
 
-	Ok(response.content)
+	for url in images {
+		content.push(RequestContent::image_url(RequestImageUrl { url }))
+	}
+
+	RequestMessage::user(content, message.author.name.clone())
+}
+
+pub async fn post(body: &mut RequestBody, message: &Message, reply: Option<&Message>) -> Result<String> {
+	if let Some(message) = reply {
+		let content = "Use the following message as context for the message after it.";
+		body.messages.push(RequestMessage::developer(content.into()));
+
+		let parsed = parse(message);
+		body.messages.push(parsed);
+	}
+
+	let parsed = parse(message);
+	body.messages.push(parsed);
+
+	let response = request(body).await?;
+	body.messages.push(RequestMessage::assistant(response.clone()));
+
+	Ok(response)
+}
+
+pub async fn request(body: &RequestBody) -> Result<String> {
+	let key = env::var("OPENAI_API_KEY")?;
+	let url = env::var("OPENAI_API_URL")?;
+
+	let client = Client::builder().user_agent(env!("CARGO_PKG_NAME")).build()?;
+	let full = Url::parse(&url)?.join("chat/completions")?;
+
+	let request = client.post(full).bearer_auth(key).json(body);
+	let response: ResponseBody = request.send().await?.error_for_status()?.json().await?;
+
+	let option = response.choices.into_iter().next();
+	let choice = option.ok_or_else(|| Error::msg("No choices returned"))?;
+
+	Ok(choice.message.content)
 }

@@ -72,9 +72,7 @@ impl Handler {
 			.ok_or_else(|| Error::msg("Could not get histories"))?;
 
 		let body = history.entry(message.author.id).or_insert(openai::body()?);
-		let reply = message.referenced_message.as_ref().map(|msg| msg.content.as_str());
-
-		let content = openai::post(body, message.content.clone(), reply)?;
+		let content = openai::post(body, message, message.referenced_message.as_deref()).await?;
 
 		let button = CreateButton::new(message.author.id.to_string())
 			.label("Delete")
