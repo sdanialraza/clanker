@@ -79,7 +79,7 @@ pub async fn request(body: &RequestBody) -> Result<String> {
 	let response: ResponseBody = request.send().await?.error_for_status()?.json().await?;
 
 	let option = response.choices.into_iter().next();
-	let choice = option.ok_or_else(|| Error::msg("No choices returned"))?;
+	let choice = option.ok_or_else(|| Error::msg("No choices returned!"))?;
 
 	Ok(choice.message.content)
 }

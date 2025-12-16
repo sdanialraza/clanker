@@ -15,19 +15,19 @@ impl Handler {
 			.data
 			.options
 			.first()
-			.ok_or_else(|| Error::msg("No command options present"))?;
+			.ok_or_else(|| Error::msg("No command options present!"))?;
 
 		if option.name == "all" {
 			let application = ctx.http.get_current_application_info().await?;
 
 			if application.owner.is_none_or(|owner| command.user.id != owner.id) {
-				anyhow::bail!("You are not the application owner");
+				anyhow::bail!("You are not the application owner!");
 			}
 
 			let mut data = ctx.data.write().await;
 
 			data.get_mut::<History>()
-				.ok_or_else(|| Error::msg("Could not get histories"))?
+				.ok_or_else(|| Error::msg("Could not get histories!"))?
 				.clear();
 
 			let message = CreateInteractionResponseMessage::new().content("Cleared all chat histories!");
@@ -40,7 +40,7 @@ impl Handler {
 			let mut data = ctx.data.write().await;
 
 			data.get_mut::<History>()
-				.ok_or_else(|| Error::msg("Could not get histories"))?
+				.ok_or_else(|| Error::msg("Could not get histories!"))?
 				.remove(&command.user.id);
 
 			let message = CreateInteractionResponseMessage::new().content("Cleared your chat history!");
@@ -54,7 +54,7 @@ impl Handler {
 
 	async fn component_create(ctx: &Context, component: &ComponentInteraction) -> Result<()> {
 		if component.user.id.to_string() != component.data.custom_id {
-			anyhow::bail!("{} did not reply to you", ctx.cache.current_user().name);
+			anyhow::bail!("{} did not reply to you!", ctx.cache.current_user().name);
 		}
 
 		component.message.delete(ctx).await?;
@@ -69,7 +69,7 @@ impl Handler {
 
 		let history = data
 			.get_mut::<History>()
-			.ok_or_else(|| Error::msg("Could not get histories"))?;
+			.ok_or_else(|| Error::msg("Could not get histories!"))?;
 
 		let body = history.entry(message.author.id).or_insert(openai::body()?);
 		let content = openai::post(body, message, message.referenced_message.as_deref()).await?;
@@ -102,7 +102,7 @@ impl EventHandler for Handler {
 
 		if let Err(error) = result {
 			let message = CreateInteractionResponseMessage::new()
-				.content(format!(":no_entry_sign: {error}!"))
+				.content(format!(":no_entry_sign: {error}"))
 				.ephemeral(true);
 
 			let response = CreateInteractionResponse::Message(message);
@@ -125,8 +125,8 @@ impl EventHandler for Handler {
 		}
 
 		if !message.mentions_user_id(ctx.cache.current_user().id) {
-			let firsts = ["btw", "hello", "hey", "hi", "oi", "ok", "okay", "so", "sup", "wtf"];
-			let seconds = ["bot", "clank", "clanka", "clanker", "google", "gpt", "grok", "siri"];
+			let firsts = ["hello", "hey", "hi"];
+			let seconds = ["clank", "clanka", "clanker"];
 
 			let lower = message.content.to_lowercase();
 			let mut words = lower.split([' ', ',']).filter(|word| !word.is_empty());
@@ -148,7 +148,7 @@ impl EventHandler for Handler {
 			let builder = CreateMessage::new()
 				.allowed_mentions(CreateAllowedMentions::new())
 				.button(button)
-				.content(format!(":no_entry_sign: {error}!"))
+				.content(format!(":no_entry_sign: {error}"))
 				.flags(MessageFlags::SUPPRESS_EMBEDS)
 				.reference_message(&message);
 

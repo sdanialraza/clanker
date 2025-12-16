@@ -68,25 +68,25 @@ pub struct ResponseMessage {
 }
 
 impl RequestContent {
-	pub fn image_url(image_url: RequestImageUrl) -> Self {
+	pub const fn image_url(image_url: RequestImageUrl) -> Self {
 		Self::ImageUrl(RequestContentImageUrl { image_url })
 	}
 
-	pub fn text(text: String) -> Self {
+	pub const fn text(text: String) -> Self {
 		Self::Text(RequestContentText { text })
 	}
 }
 
 impl RequestMessage {
-	pub fn assistant(content: String) -> Self {
+	pub const fn assistant(content: String) -> Self {
 		Self::Assistant(RequestMessageAssistant { content })
 	}
 
-	pub fn developer(content: String) -> Self {
+	pub const fn developer(content: String) -> Self {
 		Self::Developer(RequestMessageDeveloper { content })
 	}
 
-	pub fn user(content: Vec<RequestContent>, name: String) -> Self {
+	pub const fn user(content: Vec<RequestContent>, name: String) -> Self {
 		Self::User(RequestMessageUser { content, name })
 	}
 }
