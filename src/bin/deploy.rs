@@ -13,8 +13,8 @@ async fn main() -> Result<()> {
 	let token = env::var("DISCORD_TOKEN")?;
 	let http = HttpBuilder::new(token).application_id(application_id).build();
 
-	let all = CreateCommandOption::new(CommandOptionType::SubCommand, "all", "Clears all chat histories");
-	let history = CreateCommandOption::new(CommandOptionType::SubCommand, "history", "Clears your chat history");
+	let all = CreateCommandOption::new(CommandOptionType::SubCommand, "all", "Clears all servers' histories");
+	let history = CreateCommandOption::new(CommandOptionType::SubCommand, "history", "Clears this server's history");
 
 	let clear = CreateCommand::new("clear")
 		.description("Commands for clearing chat histories")

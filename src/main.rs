@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::env;
 
 use anyhow::Result;
-use serenity::all::{ActivityData, Client, GatewayIntents, UserId};
+use serenity::all::{ActivityData, Client, GatewayIntents, GuildId};
 use serenity::prelude::TypeMapKey;
 
 use crate::handler::Handler;
@@ -15,7 +15,7 @@ use crate::model::RequestBody;
 struct History;
 
 impl TypeMapKey for History {
-	type Value = HashMap<UserId, RequestBody>;
+	type Value = HashMap<GuildId, RequestBody>;
 }
 
 #[tokio::main]

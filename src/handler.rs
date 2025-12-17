@@ -30,20 +30,24 @@ impl Handler {
 				.ok_or_else(|| Error::msg("Could not get histories!"))?
 				.clear();
 
-			let message = CreateInteractionResponseMessage::new().content("Cleared all chat histories!");
+			let message = CreateInteractionResponseMessage::new().content("Cleared all servers' histories!");
 			let response = CreateInteractionResponse::Message(message);
 
 			command.create_response(ctx, response).await?;
 		}
 
 		if option.name == "history" {
+			let guild = command
+				.guild_id
+				.ok_or_else(|| Error::msg("Command not sent from a server!"))?;
+
 			let mut data = ctx.data.write().await;
 
 			data.get_mut::<History>()
 				.ok_or_else(|| Error::msg("Could not get histories!"))?
-				.remove(&command.user.id);
+				.remove(&guild);
 
-			let message = CreateInteractionResponseMessage::new().content("Cleared your chat history!");
+			let message = CreateInteractionResponseMessage::new().content("Cleared this server's history!");
 			let response = CreateInteractionResponse::Message(message);
 
 			command.create_response(ctx, response).await?;
@@ -65,13 +69,17 @@ impl Handler {
 	async fn message_create(ctx: &Context, message: &Message) -> Result<()> {
 		message.channel_id.broadcast_typing(ctx).await?;
 
+		let guild = message
+			.guild_id
+			.ok_or_else(|| Error::msg("Message not sent from a server!"))?;
+
 		let mut data = ctx.data.write().await;
 
 		let history = data
 			.get_mut::<History>()
 			.ok_or_else(|| Error::msg("Could not get histories!"))?;
 
-		let body = history.entry(message.author.id).or_insert(openai::body()?);
+		let body = history.entry(guild).or_insert(openai::body()?);
 		let content = openai::post(body, message, message.referenced_message.as_deref()).await?;
 
 		let button = CreateButton::new(message.author.id.to_string())
