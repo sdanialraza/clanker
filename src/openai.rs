@@ -21,18 +21,18 @@ pub fn body() -> Result<RequestBody> {
 pub fn parse(message: &Message) -> RequestMessage {
 	let mut images = Vec::new();
 
-	for attachment in message.attachments.iter() {
+	for attachment in &message.attachments {
 		if attachment.dimensions().is_some() {
 			images.push(attachment.url.clone());
 		}
 	}
 
-	for embed in message.embeds.iter() {
-		if let Some(image) = embed.image.as_ref() {
+	for embed in &message.embeds {
+		if let Some(image) = &embed.image {
 			images.push(image.url.clone());
 		}
 
-		if let Some(thumbnail) = embed.thumbnail.as_ref() {
+		if let Some(thumbnail) = &embed.thumbnail {
 			images.push(thumbnail.url.clone());
 		}
 	}
@@ -44,7 +44,7 @@ pub fn parse(message: &Message) -> RequestMessage {
 	}
 
 	for url in images {
-		content.push(RequestContent::image_url(RequestImageUrl { url }))
+		content.push(RequestContent::image_url(RequestImageUrl { url }));
 	}
 
 	RequestMessage::user(content, message.author.name.clone())
