@@ -1,20 +1,21 @@
 mod handler;
+mod model;
 mod openai;
 
 use std::collections::HashMap;
 use std::env;
 
 use anyhow::Result;
-use openai_api_rust::chat::ChatBody;
 use serenity::all::{ActivityData, Client, GatewayIntents, UserId};
 use serenity::prelude::TypeMapKey;
 
 use crate::handler::Handler;
+use crate::model::RequestBody;
 
 struct History;
 
 impl TypeMapKey for History {
-	type Value = HashMap<UserId, ChatBody>;
+	type Value = HashMap<UserId, RequestBody>;
 }
 
 #[tokio::main]
@@ -25,7 +26,7 @@ async fn main() -> Result<()> {
 	let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
 
 	let mut client = Client::builder(token, intents)
-		.activity(ActivityData::listening("your prompts"))
+		.activity(ActivityData::custom("Awaiting your prompts"))
 		.event_handler(Handler)
 		.type_map_insert::<History>(HashMap::new())
 		.await?;
