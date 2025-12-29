@@ -1,4 +1,4 @@
-pub use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
 pub struct RequestBody {
@@ -53,13 +53,30 @@ pub struct RequestMessageUser {
 }
 
 #[derive(Deserialize)]
-pub struct ResponseBody {
+#[serde(untagged)]
+pub enum ResponseBody {
+	Error(ResponseBodyError),
+	Success(ResponseBodySuccess),
+}
+
+#[derive(Deserialize)]
+pub struct ResponseBodyError {
+	pub error: ResponseError,
+}
+
+#[derive(Deserialize)]
+pub struct ResponseBodySuccess {
 	pub choices: Vec<ResponseChoice>,
 }
 
 #[derive(Deserialize)]
 pub struct ResponseChoice {
 	pub message: ResponseMessage,
+}
+
+#[derive(Deserialize)]
+pub struct ResponseError {
+	pub message: String,
 }
 
 #[derive(Deserialize)]
