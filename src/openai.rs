@@ -76,9 +76,14 @@ pub async fn request(body: &RequestBody) -> Result<String> {
 	let full = Url::parse(&url)?.join("chat/completions")?;
 
 	let request = client.post(full).bearer_auth(key).json(body);
-	let response: ResponseBody = request.send().await?.error_for_status()?.json().await?;
+	let response: ResponseBody = request.send().await?.json().await?;
 
-	let option = response.choices.into_iter().next();
+	let success = match response {
+		ResponseBody::Error(error) => anyhow::bail!("API error: {}", error.error.message),
+		ResponseBody::Success(success) => success,
+	};
+
+	let option = success.choices.into_iter().next();
 	let choice = option.ok_or_else(|| Error::msg("No choices returned!"))?;
 
 	Ok(choice.message.content)
