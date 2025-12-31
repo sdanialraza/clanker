@@ -1,3 +1,5 @@
+use std::collections::hash_map::Entry;
+
 use anyhow::{Error, Result};
 use serenity::all::{
 	ButtonStyle, CommandInteraction, ComponentInteraction, Context, CreateAllowedMentions, CreateButton,
@@ -79,8 +81,14 @@ impl Handler {
 			.get_mut::<History>()
 			.ok_or_else(|| Error::msg("Could not get histories!"))?;
 
-		let body = history.entry(guild).or_insert(openai::body()?);
-		let content = openai::post(body, message, message.referenced_message.as_deref()).await?;
+		let body = match history.entry(guild) {
+			Entry::Occupied(occupied) => occupied.into_mut(),
+			Entry::Vacant(vacant) => vacant.insert(openai::body(ctx, guild).await?),
+		};
+
+		let content = Some(openai::post(body, message, message.referenced_message.as_deref()).await?)
+			.filter(|content| !content.trim().is_empty())
+			.unwrap_or_else(|| "-# (empty)".into());
 
 		let button = CreateButton::new(message.author.id.to_string())
 			.label("Delete")
