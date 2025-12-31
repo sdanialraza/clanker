@@ -1,21 +1,32 @@
-use std::{env, fs};
+use std::env;
 
 use anyhow::{Error, Result};
 use reqwest::{Client, Url};
-use serenity::all::Message;
+use serenity::all::{Context, GuildId, Message};
+use tokio::fs;
 
 use crate::model::{RequestBody, RequestContent, RequestImageUrl, RequestMessage, ResponseBody};
 
-pub fn body() -> Result<RequestBody> {
-	let content = fs::read_to_string("assets/prompt.txt")?;
-	let message = RequestMessage::developer(content);
+pub async fn body(ctx: &Context, guild: GuildId) -> Result<RequestBody> {
+	let mut messages = Vec::new();
 
-	let body = RequestBody {
-		messages: vec![message],
-		model: env::var("OPENAI_MODEL")?,
-	};
+	let content = "The following emojis are available to you. Try to avoid unicode emojis.";
+	messages.push(RequestMessage::developer(content.into()));
 
-	Ok(body)
+	for emoji in ctx.http.get_emojis(guild).await? {
+		let content = vec![
+			RequestContent::text(emoji.to_string()),
+			RequestContent::image_url(RequestImageUrl { url: emoji.url() }),
+		];
+
+		messages.push(RequestMessage::user(content, "emoji-list".into()));
+	}
+
+	let content = fs::read_to_string("assets/prompt.txt").await?;
+	messages.push(RequestMessage::developer(content));
+
+	let model = env::var("OPENAI_MODEL")?;
+	Ok(RequestBody { messages, model })
 }
 
 pub fn parse(message: &Message) -> RequestMessage {
