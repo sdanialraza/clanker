@@ -8,7 +8,7 @@ use tokio::fs;
 use crate::model::{RequestBody, RequestContent, RequestImageUrl, RequestMessage, ResponseBody};
 
 pub async fn body(ctx: &Context, guild: GuildId) -> Result<RequestBody> {
-	let child_stdout = Command::new("git").arg("rev-parse").arg("HEAD").output()?.stdout;
+	let child_stdout = Command::new("git").arg("rev-parse").arg("--short").arg("HEAD").output()?.stdout;
 
 	let commit_hash = String::from_utf8(child_stdout)?;
 
