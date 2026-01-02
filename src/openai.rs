@@ -8,14 +8,9 @@ use tokio::fs;
 use crate::model::{RequestBody, RequestContent, RequestImageUrl, RequestMessage, ResponseBody};
 
 pub async fn body(ctx: &Context, guild: GuildId) -> Result<RequestBody> {
-	let child_stdout = Command::new("git")
-		.arg("rev-parse")
-		.arg("HEAD")
-		.output()
-		.unwrap()
-		.stdout;
+	let child_stdout = Command::new("git").arg("rev-parse").arg("HEAD").output()?.stdout;
 
-	let commit_hash = String::from_utf8(child_stdout).unwrap();
+	let commit_hash = String::from_utf8(child_stdout)?;
 
 	let mut messages = Vec::new();
 
@@ -33,7 +28,7 @@ pub async fn body(ctx: &Context, guild: GuildId) -> Result<RequestBody> {
 
 	let content = fs::read_to_string("assets/prompt.txt")
 		.await?
-		.replace("${user_id}", env::var("DISCORD_APPLICATION_ID").unwrap().as_str())
+		.replace("${user_id}", env::var("DISCORD_APPLICATION_ID")?.as_str())
 		.replace("${git_commit}", commit_hash.as_str());
 
 	messages.push(RequestMessage::developer(content));
