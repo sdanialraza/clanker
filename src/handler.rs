@@ -142,7 +142,7 @@ impl EventHandler for Handler {
 
 		if !message.mentions_user_id(ctx.cache.current_user().id) {
 			let firsts = ["hello", "hey", "hi"];
-			let seconds = ["clank", "clanka", "clanker"];
+			let seconds = ["clank", "clanka", "clankette"];
 
 			let lower = message.content.to_lowercase();
 			let mut words = lower.split([' ', ',']).filter(|word| !word.is_empty());
