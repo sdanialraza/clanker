@@ -13,10 +13,6 @@ pub struct Handler;
 
 impl Handler {
 	async fn command_create(ctx: &Context, command: &CommandInteraction) -> Result<()> {
-		let guild_id = command
-			.guild_id
-			.ok_or_else(|| Error::msg("Clanker cannot be used in DMs!"))?;
-
 		let option = command
 			.data
 			.options
@@ -32,10 +28,9 @@ impl Handler {
 
 			let mut data = ctx.data.write().await;
 
-			*data
-				.get_mut::<History>()
-				.ok_or_else(|| Error::msg("Could not get histories!"))? =
-				HashMap::from([(guild_id, openai::body(ctx, guild_id).await?)]);
+			data.get_mut::<History>()
+				.ok_or_else(|| Error::msg("Could not get histories!"))?
+				.clear();
 
 			let message = CreateInteractionResponseMessage::new().content("Cleared all servers' histories!");
 			let response = CreateInteractionResponse::Message(message);
