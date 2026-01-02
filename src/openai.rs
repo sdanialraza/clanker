@@ -11,9 +11,7 @@ pub async fn body(ctx: &Context, guild: GuildId) -> Result<RequestBody> {
 	let child_stdout = Command::new("git")
 		.arg("rev-parse")
 		.arg("HEAD")
-		.spawn()
-		.unwrap()
-		.wait_with_output()
+		.output()
 		.unwrap()
 		.stdout;
 
