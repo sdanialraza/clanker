@@ -1,4 +1,4 @@
-use std::collections::hash_map::Entry;
+use std::collections::{HashMap, hash_map::Entry};
 
 use anyhow::{Error, Result};
 use serenity::all::{
@@ -13,6 +13,10 @@ pub struct Handler;
 
 impl Handler {
 	async fn command_create(ctx: &Context, command: &CommandInteraction) -> Result<()> {
+		let guild_id = command
+			.guild_id
+			.ok_or_else(|| Error::msg("Clanker cannot be used in DMs!"))?;
+
 		let option = command
 			.data
 			.options
@@ -28,9 +32,10 @@ impl Handler {
 
 			let mut data = ctx.data.write().await;
 
-			data.get_mut::<History>()
-				.ok_or_else(|| Error::msg("Could not get histories!"))?
-				.clear();
+			*data
+				.get_mut::<History>()
+				.ok_or_else(|| Error::msg("Could not get histories!"))? =
+				HashMap::from([(guild_id, openai::body(ctx, guild_id).await?)]);
 
 			let message = CreateInteractionResponseMessage::new().content("Cleared all servers' histories!");
 			let response = CreateInteractionResponse::Message(message);
