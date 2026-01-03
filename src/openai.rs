@@ -1,39 +1,28 @@
-use std::{env, process::Command};
+use std::process::Command;
+use std::{env, fs};
 
 use anyhow::{Error, Result};
 use reqwest::{Client, Url};
-use serenity::all::{Context, GuildId, Message};
-use tokio::fs;
+use serenity::all::{Context, Message};
 
 use crate::model::{RequestBody, RequestContent, RequestImageUrl, RequestMessage, ResponseBody};
 
-pub async fn body(ctx: &Context, guild: GuildId) -> Result<RequestBody> {
-	let child_stdout = Command::new("git").arg("rev-parse").arg("--short").arg("HEAD").output()?.stdout;
+pub fn body(ctx: &Context) -> Result<RequestBody> {
+	let output = Command::new("git").args(["rev-parse", "--short", "HEAD"]).output()?;
 
-	let commit_hash = String::from_utf8(child_stdout)?;
-
-	let mut messages = Vec::new();
-
-	let content = "The following emojis are available to you. Try to avoid unicode emojis.";
-	messages.push(RequestMessage::developer(content.into()));
-
-	for emoji in ctx.http.get_emojis(guild).await? {
-		let content = vec![
-			RequestContent::text(emoji.to_string()),
-			RequestContent::image_url(RequestImageUrl { url: emoji.url() }),
-		];
-
-		messages.push(RequestMessage::user(content, "emoji-list".into()));
+	if !output.status.success() {
+		anyhow::bail!("Git error: {}", str::from_utf8(&output.stderr)?.trim());
 	}
 
-	let content = fs::read_to_string("assets/prompt.txt")
-		.await?
-		.replace("${user_id}", env::var("DISCORD_APPLICATION_ID")?.as_str())
-		.replace("${git_commit}", commit_hash.as_str());
+	let content = fs::read_to_string("assets/prompt.txt")?
+		.replace("$hash", str::from_utf8(&output.stdout)?.trim())
+		.replace("$id", &ctx.cache.current_user().id.to_string())
+		.replace("$name", &ctx.cache.current_user().name)
+		.replace("$tag", &ctx.cache.current_user().tag());
 
-	messages.push(RequestMessage::developer(content));
-
+	let messages = vec![RequestMessage::developer(content)];
 	let model = env::var("OPENAI_MODEL")?;
+
 	Ok(RequestBody { messages, model })
 }
 
@@ -66,7 +55,7 @@ pub fn parse(message: &Message) -> RequestMessage {
 		content.push(RequestContent::image_url(RequestImageUrl { url }));
 	}
 
-	RequestMessage::user(content, message.author.name.clone())
+	RequestMessage::user(content, message.author.tag())
 }
 
 pub async fn post(body: &mut RequestBody, message: &Message, reply: Option<&Message>) -> Result<String> {

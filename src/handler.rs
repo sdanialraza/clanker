@@ -83,7 +83,7 @@ impl Handler {
 
 		let body = match history.entry(guild) {
 			Entry::Occupied(occupied) => occupied.into_mut(),
-			Entry::Vacant(vacant) => vacant.insert(openai::body(ctx, guild).await?),
+			Entry::Vacant(vacant) => vacant.insert(openai::body(ctx)?),
 		};
 
 		let content = Some(openai::post(body, message, message.referenced_message.as_deref()).await?)
@@ -141,17 +141,18 @@ impl EventHandler for Handler {
 		}
 
 		if !message.mentions_user_id(ctx.cache.current_user().id) {
-			let firsts = ["hello", "hey", "hi"];
-			let seconds = ["clank", "clanka", "clanker"];
-
+			let greetings = ["hello", "hey", "hi"];
 			let lower = message.content.to_lowercase();
-			let mut words = lower.split([' ', ',']).filter(|word| !word.is_empty());
 
-			if words.next().is_none_or(|word| !firsts.contains(&word)) {
+			let mut words = lower
+				.split_whitespace()
+				.map(|word| word.strip_suffix(',').unwrap_or(word));
+
+			if words.next().is_none_or(|word| !greetings.contains(&word)) {
 				return;
 			}
 
-			if words.next().is_none_or(|word| !seconds.contains(&word)) {
+			if words.next() != Some(&ctx.cache.current_user().name.to_lowercase()) {
 				return;
 			}
 		}
