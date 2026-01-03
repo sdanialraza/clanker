@@ -9,10 +9,13 @@ use crate::model::{RequestBody, RequestContent, RequestImageUrl, RequestMessage,
 
 pub fn body(ctx: &Context) -> Result<RequestBody> {
 	let output = Command::new("git").args(["rev-parse", "--short", "HEAD"]).output()?;
-	let hash = String::from_utf8(output.stdout)?;
+
+	if !output.status.success() {
+		anyhow::bail!("Git error: {}", str::from_utf8(&output.stderr)?.trim());
+	}
 
 	let content = fs::read_to_string("assets/prompt.txt")?
-		.replace("$hash", &hash)
+		.replace("$hash", str::from_utf8(&output.stdout)?.trim())
 		.replace("$id", &ctx.cache.current_user().id.to_string())
 		.replace("$name", &ctx.cache.current_user().name)
 		.replace("$tag", &ctx.cache.current_user().tag());
