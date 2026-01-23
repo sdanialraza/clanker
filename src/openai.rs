@@ -8,17 +8,23 @@ use serenity::all::{Context, Message};
 use crate::model::{RequestBody, RequestContent, RequestImageUrl, RequestMessage, ResponseBody};
 
 pub fn body(ctx: &Context) -> Result<RequestBody> {
-	let output = Command::new("git").args(["rev-parse", "--short", "HEAD"]).output()?;
+	let hash = Command::new("git").args(["rev-parse", "--short", "HEAD"]).output()?;
+	let url = Command::new("git").args(["remote", "get-url", "origin"]).output()?;
 
-	if !output.status.success() {
-		anyhow::bail!("Git error: {}", str::from_utf8(&output.stderr)?.trim());
+	if !hash.status.success() {
+		anyhow::bail!("Git error: {}", str::from_utf8(&hash.stderr)?.trim());
+	}
+
+	if !url.status.success() {
+		anyhow::bail!("Git error: {}", str::from_utf8(&url.stderr)?.trim());
 	}
 
 	let content = fs::read_to_string("assets/prompt.txt")?
-		.replace("$hash", str::from_utf8(&output.stdout)?.trim())
+		.replace("$hash", str::from_utf8(&hash.stdout)?.trim())
 		.replace("$id", &ctx.cache.current_user().id.to_string())
 		.replace("$name", &ctx.cache.current_user().name)
-		.replace("$tag", &ctx.cache.current_user().tag());
+		.replace("$tag", &ctx.cache.current_user().tag())
+		.replace("$url", str::from_utf8(&url.stdout)?.trim());
 
 	let messages = vec![RequestMessage::developer(content)];
 	let model = env::var("OPENAI_MODEL")?;
