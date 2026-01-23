@@ -38,18 +38,18 @@ pub enum RequestMessage {
 
 #[derive(Serialize)]
 pub struct RequestMessageAssistant {
-	content: String,
+	pub content: String,
 }
 
 #[derive(Serialize)]
 pub struct RequestMessageDeveloper {
-	content: String,
+	pub content: String,
 }
 
 #[derive(Serialize)]
 pub struct RequestMessageUser {
-	content: Vec<RequestContent>,
-	name: String,
+	pub content: Vec<RequestContent>,
+	pub name: String,
 }
 
 #[derive(Deserialize)]
