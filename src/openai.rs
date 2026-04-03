@@ -90,7 +90,11 @@ pub async fn request(body: &RequestBody) -> Result<String> {
 	let full = Url::parse(&url)?.join("chat/completions")?;
 
 	let request = client.post(full).bearer_auth(key).json(body);
-	let response: ResponseBody = request.send().await?.json().await?;
+	let text = request.send().await?.text().await?;
+
+	let Ok(response) = serde_json::from_str(&text) else {
+		anyhow::bail!("Parsing error: {text}");
+	};
 
 	let success = match response {
 		ResponseBody::Error(error) => anyhow::bail!("API error: {}", error.error.message),
