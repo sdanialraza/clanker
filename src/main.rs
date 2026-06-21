@@ -3,7 +3,7 @@ use std::fs::read_to_string;
 use std::process::Command;
 use std::str::from_utf8;
 
-use anyhow::Result;
+use anyhow::{Result, ensure};
 use dotenvy::dotenv;
 use gemini_rust::{Gemini, Message};
 use serenity::all::{ActivityData, Client, GatewayIntents};
@@ -35,16 +35,27 @@ impl TypeMapKey for History {
 #[main]
 
 async fn main() -> Result<()> {
-	dotenv()?;
+	let _ = dotenv();
 
 	let token = var("DISCORD_TOKEN")?;
 	let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
 
-	let api_key = var("GEMINI_API_KEY").expect("Missing GEMINI_API_KEY");
+	let api_key = var("GEMINI_API_KEY")?;
 	let gemini_client = Gemini::with_model(api_key, "models/gemini-3.1-flash-lite".to_string())?;
 
 	let git_hash = Command::new("git").args(["rev-parse", "--short", "HEAD"]).output()?;
 	let git_url = Command::new("git").args(["remote", "get-url", "origin"]).output()?;
+
+	ensure!(
+		git_hash.status.success(),
+		"Git error: {}",
+		from_utf8(&git_hash.stderr)?.trim()
+	);
+	ensure!(
+		git_url.status.success(),
+		"Git error: {}",
+		from_utf8(&git_url.stderr)?.trim()
+	);
 
 	let system_prompt = read_to_string("assets/prompt.txt")?
 		.replace("$hash", from_utf8(&git_hash.clone().stdout)?.trim())

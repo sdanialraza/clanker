@@ -12,20 +12,14 @@ pub struct Handler;
 
 impl Handler {
 	async fn command_create(context: &Context, command: &CommandInteraction) -> Result<()> {
-		let option = command
-			.data
-			.options
-			.first()
-			.ok_or_else(|| Error::msg("No command options present!"))?;
-
-		if option.name == "history" {
+		if command.data.name == "clear-history" {
 			let mut data = context.data.write().await;
 
 			data.get_mut::<History>()
 				.ok_or_else(|| Error::msg("Could not get the chat history!"))?
 				.clear();
 
-			let message = CreateInteractionResponseMessage::new().content("Cleared this server's history!");
+			let message = CreateInteractionResponseMessage::new().content("Cleared the chat history!");
 
 			let response = CreateInteractionResponse::Message(message);
 
@@ -90,6 +84,12 @@ impl Handler {
 			.execute()
 			.await?
 			.text();
+
+		let response = if response.trim().is_empty() {
+			"-# (empty)".into()
+		} else {
+			response
+		};
 
 		let button = CreateButton::new(message.author.id.to_string())
 			.label("Delete")
