@@ -41,7 +41,7 @@
             check = self.checks.${system}.pre-commit-check;
 
             buildInputs = [ ];
-            nativeBuildInputs = [ pkgs.makeWrapper ];
+            nativeBuildInputs = [ ];
           }
         );
     in
@@ -104,11 +104,6 @@
                 src = ./.;
                 meta.mainProgram = "clanker";
                 cargoLock.lockFile = ./Cargo.lock;
-
-                postInstall = ''
-                  wrapProgram $out/bin/clanker \
-                    --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.git ]}
-                '';
               };
         }
       );

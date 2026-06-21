@@ -43,23 +43,7 @@ async fn main() -> Result<()> {
 	let api_key = var("GEMINI_API_KEY")?;
 	let gemini_client = Gemini::with_model(api_key, "models/gemini-3.1-flash-lite".to_string())?;
 
-	let git_hash = Command::new("git").args(["rev-parse", "--short", "HEAD"]).output()?;
-	let git_url = Command::new("git").args(["remote", "get-url", "origin"]).output()?;
-
-	ensure!(
-		git_hash.status.success(),
-		"Git error: {}",
-		from_utf8(&git_hash.stderr)?.trim()
-	);
-	ensure!(
-		git_url.status.success(),
-		"Git error: {}",
-		from_utf8(&git_url.stderr)?.trim()
-	);
-
-	let system_prompt = read_to_string("assets/prompt.txt")?
-		.replace("$hash", from_utf8(&git_hash.clone().stdout)?.trim())
-		.replace("$url", from_utf8(&git_url.clone().stdout)?.trim());
+	let system_prompt = read_to_string("assets/prompt.txt")?;
 
 	let bot_state = BotState {
 		gemini_client,
