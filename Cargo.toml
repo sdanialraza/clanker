@@ -5,18 +5,8 @@ edition = "2024"
 default-run = "clanker"
 
 [dependencies]
-anyhow = "1.0.100"
+anyhow = "1.0.102"
 dotenvy = "0.15.7"
+gemini-rust = "1.7.1"
 serenity = "0.12.5"
-
-[dependencies.reqwest]
-version = "0.13.1"
-features = ["json"]
-
-[dependencies.serde]
-version = "1.0.228"
-features = ["derive"]
-
-[dependencies.tokio]
-version = "1.49.0"
-features = ["macros", "rt-multi-thread"]
+tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }

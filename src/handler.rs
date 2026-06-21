@@ -1,94 +1,95 @@
-use std::collections::hash_map::Entry;
-
 use anyhow::{Error, Result};
+use gemini_rust::{Message as GeminiMessage, Tool};
 use serenity::all::{
 	ButtonStyle, CommandInteraction, ComponentInteraction, Context, CreateAllowedMentions, CreateButton,
 	CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EventHandler, Interaction, Message,
-	MessageFlags, Ready,
+	MessageFlags, Ready, async_trait,
 };
 
-use crate::{History, openai};
+use crate::{History, State};
 
 pub struct Handler;
 
 impl Handler {
-	async fn command_create(ctx: &Context, command: &CommandInteraction) -> Result<()> {
+	async fn command_create(context: &Context, command: &CommandInteraction) -> Result<()> {
 		let option = command
 			.data
 			.options
 			.first()
 			.ok_or_else(|| Error::msg("No command options present!"))?;
 
-		if option.name == "all" {
-			let application = ctx.http.get_current_application_info().await?;
-
-			if application.owner.is_none_or(|owner| command.user.id != owner.id) {
-				anyhow::bail!("You are not the application owner!");
-			}
-
-			let mut data = ctx.data.write().await;
+		if option.name == "history" {
+			let mut data = context.data.write().await;
 
 			data.get_mut::<History>()
-				.ok_or_else(|| Error::msg("Could not get histories!"))?
+				.ok_or_else(|| Error::msg("Could not get the chat history!"))?
 				.clear();
 
-			let message = CreateInteractionResponseMessage::new().content("Cleared all servers' histories!");
-			let response = CreateInteractionResponse::Message(message);
-
-			command.create_response(ctx, response).await?;
-		}
-
-		if option.name == "history" {
-			let guild = command
-				.guild_id
-				.ok_or_else(|| Error::msg("Command not sent from a server!"))?;
-
-			let mut data = ctx.data.write().await;
-
-			data.get_mut::<History>()
-				.ok_or_else(|| Error::msg("Could not get histories!"))?
-				.remove(&guild);
-
 			let message = CreateInteractionResponseMessage::new().content("Cleared this server's history!");
+
 			let response = CreateInteractionResponse::Message(message);
 
-			command.create_response(ctx, response).await?;
+			command.create_response(context, response).await?;
 		}
 
 		Ok(())
 	}
 
-	async fn component_create(ctx: &Context, component: &ComponentInteraction) -> Result<()> {
+	async fn component_create(context: &Context, component: &ComponentInteraction) -> Result<()> {
 		if component.user.id.to_string() != component.data.custom_id {
-			anyhow::bail!("{} did not reply to you!", ctx.cache.current_user().name);
+			anyhow::bail!("{} did not reply to you!", context.cache.current_user().name);
 		}
 
-		component.message.delete(ctx).await?;
+		component.message.delete(context).await?;
 
 		Ok(())
 	}
 
-	async fn message_create(ctx: &Context, message: &Message) -> Result<()> {
-		message.channel_id.broadcast_typing(ctx).await?;
+	async fn message_create(context: &Context, message: &Message) -> Result<()> {
+		message.channel_id.broadcast_typing(context).await?;
 
-		let guild = message
-			.guild_id
-			.ok_or_else(|| Error::msg("Message not sent from a server!"))?;
+		let (gemini, base_prompt, current_history) = {
+			let data = context.data.read().await;
 
-		let mut data = ctx.data.write().await;
+			let state = data
+				.get::<State>()
+				.ok_or_else(|| Error::msg("Could not get the bot state!"))?;
 
-		let history = data
-			.get_mut::<History>()
-			.ok_or_else(|| Error::msg("Could not get histories!"))?;
+			let history = data
+				.get::<History>()
+				.ok_or_else(|| Error::msg("Could not get the chat history!"))?;
 
-		let body = match history.entry(guild) {
-			Entry::Occupied(occupied) => occupied.into_mut(),
-			Entry::Vacant(vacant) => vacant.insert(openai::body(ctx)?),
+			(
+				state.gemini_client.clone(),
+				state.system_prompt.clone(),
+				history.clone(),
+			)
 		};
 
-		let content = Some(openai::post(body, message, message.referenced_message.as_deref()).await?)
-			.filter(|content| !content.trim().is_empty())
-			.unwrap_or_else(|| "-# (empty)".into());
+		let system_prompt = base_prompt
+			.replace("$id", &context.cache.current_user().id.to_string())
+			.replace("$name", &context.cache.current_user().name)
+			.replace("$tag", &context.cache.current_user().tag());
+
+		let google_search_tool = Tool::google_search();
+
+		let author_name = message
+			.author
+			.global_name
+			.clone()
+			.unwrap_or_else(|| message.author.name.clone());
+
+		let message_content = format!("{}: {}", author_name, message.content);
+
+		let response = gemini
+			.generate_content()
+			.with_system_instruction(system_prompt)
+			.with_messages(current_history)
+			.with_user_message(&message_content)
+			.with_tool(google_search_tool)
+			.execute()
+			.await?
+			.text();
 
 		let button = CreateButton::new(message.author.id.to_string())
 			.label("Delete")
@@ -97,22 +98,37 @@ impl Handler {
 		let builder = CreateMessage::new()
 			.allowed_mentions(CreateAllowedMentions::new())
 			.button(button)
-			.content(content)
+			.content(&response)
 			.flags(MessageFlags::SUPPRESS_EMBEDS)
 			.reference_message(message);
 
-		message.channel_id.send_message(ctx, builder).await?;
+		message.channel_id.send_message(context, builder).await?;
+
+		{
+			let mut data = context.data.write().await;
+
+			let history = data
+				.get_mut::<History>()
+				.ok_or_else(|| Error::msg("Could not get histories!"))?;
+
+			history.push(GeminiMessage::user(message_content));
+
+			history.push(GeminiMessage::model(response));
+		}
 
 		Ok(())
 	}
 }
 
-#[serenity::async_trait]
+#[async_trait]
+
 impl EventHandler for Handler {
-	async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+	async fn interaction_create(&self, context: Context, interaction: Interaction) {
 		let result = match &interaction {
-			Interaction::Command(command) => Self::command_create(&ctx, command).await,
-			Interaction::Component(component) => Self::component_create(&ctx, component).await,
+			Interaction::Command(command) => Self::command_create(&context, command).await,
+
+			Interaction::Component(component) => Self::component_create(&context, component).await,
+
 			_ => return,
 		};
 
@@ -124,8 +140,10 @@ impl EventHandler for Handler {
 			let response = CreateInteractionResponse::Message(message);
 
 			let result = match &interaction {
-				Interaction::Command(command) => command.create_response(&ctx, response).await,
-				Interaction::Component(component) => component.create_response(&ctx, response).await,
+				Interaction::Command(command) => command.create_response(&context, response).await,
+
+				Interaction::Component(component) => component.create_response(&context, response).await,
+
 				_ => return,
 			};
 
@@ -135,13 +153,14 @@ impl EventHandler for Handler {
 		}
 	}
 
-	async fn message(&self, ctx: Context, message: Message) {
+	async fn message(&self, context: Context, message: Message) {
 		if message.author.bot && message.webhook_id.is_none() {
 			return;
 		}
 
-		if !message.mentions_user_id(ctx.cache.current_user().id) {
+		if !message.mentions_user_id(context.cache.current_user().id) {
 			let greetings = ["hello", "hey", "hi"];
+
 			let lower = message.content.to_lowercase();
 
 			let mut words = lower
@@ -152,12 +171,12 @@ impl EventHandler for Handler {
 				return;
 			}
 
-			if words.next() != Some(&ctx.cache.current_user().name.to_lowercase()) {
+			if words.next() != Some(&context.cache.current_user().name.to_lowercase()) {
 				return;
 			}
 		}
 
-		if let Err(error) = Self::message_create(&ctx, &message).await {
+		if let Err(error) = Self::message_create(&context, &message).await {
 			let button = CreateButton::new(message.author.id.to_string())
 				.label("Delete")
 				.style(ButtonStyle::Danger);
@@ -169,13 +188,13 @@ impl EventHandler for Handler {
 				.flags(MessageFlags::SUPPRESS_EMBEDS)
 				.reference_message(&message);
 
-			if message.channel_id.send_message(&ctx, builder).await.is_err() {
+			if message.channel_id.send_message(&context, builder).await.is_err() {
 				eprintln!("An error occurred: {error}");
 			}
 		}
 	}
 
-	async fn ready(&self, _: Context, ready: Ready) {
+	async fn ready(&self, _context: Context, ready: Ready) {
 		println!("{} is running!", ready.user.name);
 	}
 }
