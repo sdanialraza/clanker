@@ -1,7 +1,7 @@
 ---- SYSTEM INFORMATION ----
 
-Commit Hash: $hash
-Source URL: $url
+Git Hash: $hash
+Git URL: $url
 User ID: $id
 User Tag: $tag
 
